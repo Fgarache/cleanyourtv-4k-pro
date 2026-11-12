@@ -39,6 +39,7 @@ public final class WallpaperPickerActivity extends Activity {
     static final String EXTRA_MODE = "mode";
     static final String MODE_WALLPAPER = "wallpaper";
     static final String MODE_SCREENSAVER = "screensaver";
+    static final String MODE_MUSIC = "music";
 
     static final String PREF_WALLPAPER_MODE = "custom_wallpaper_mode";
     static final String PREF_CUSTOM_WALLPAPER = "custom_wallpaper_path";
@@ -51,6 +52,12 @@ public final class WallpaperPickerActivity extends Activity {
     static final String PREF_SCREENSAVER_CATEGORY = "custom_screensaver_category";
     static final String PREF_SCREENSAVER_INTERVAL = "custom_screensaver_interval_min";
     static final String PREF_SCREENSAVER_STYLE = "custom_screensaver_play_style";
+
+    static final String PREF_MUSIC_MODE = "custom_music_mode";
+    static final String PREF_CUSTOM_MUSIC = "custom_music_path";
+    static final String PREF_MUSIC_CATEGORY = "custom_music_category";
+    static final String PREF_MUSIC_INTERVAL = "custom_music_interval_min";
+    static final String PREF_MUSIC_STYLE = "custom_music_play_style";
 
     static final class MediaEntry {
         final File file;       // null for "Sin fondo"
@@ -188,7 +195,13 @@ public final class WallpaperPickerActivity extends Activity {
 
         // Title & Subtitle
         TextView title = new TextView(this);
-        title.setText(MODE_SCREENSAVER.equals(mode) ? "Salvapantalla" : "Fondo del launcher");
+        if (MODE_MUSIC.equals(mode)) {
+            title.setText("Fondo de música");
+        } else if (MODE_SCREENSAVER.equals(mode)) {
+            title.setText("Salvapantalla");
+        } else {
+            title.setText("Fondo del launcher");
+        }
         title.setTextColor(Color.WHITE);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
         try { title.setTypeface(UiFont.get(this, R.string.font_medium)); } catch (Exception ignored) {}
@@ -372,13 +385,14 @@ public final class WallpaperPickerActivity extends Activity {
         listContainer.removeAllViews();
         SharedPreferences prefs = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
         boolean isScreensaver = MODE_SCREENSAVER.equals(mode);
-        String modeKey = isScreensaver ? PREF_SCREENSAVER_MODE : PREF_WALLPAPER_MODE;
-        String pathKey = isScreensaver ? PREF_CUSTOM_SCREENSAVER : PREF_CUSTOM_WALLPAPER;
+        boolean isMusic = MODE_MUSIC.equals(mode);
+        String modeKey = isMusic ? PREF_MUSIC_MODE : (isScreensaver ? PREF_SCREENSAVER_MODE : PREF_WALLPAPER_MODE);
+        String pathKey = isMusic ? PREF_CUSTOM_MUSIC : (isScreensaver ? PREF_CUSTOM_SCREENSAVER : PREF_CUSTOM_WALLPAPER);
         String currentMode = prefs.getString(modeKey, SeamlessVideoController.MODE_SINGLE);
         String activePath = prefs.getString(pathKey, "");
 
         List<MediaEntry> filtered = new ArrayList<>();
-        if (!isScreensaver && "ALL".equals(selectedCategory)) {
+        if (!isScreensaver && !isMusic && "ALL".equals(selectedCategory)) {
             filtered.add(new MediaEntry(null, "NONE", "Sin fondo"));
         }
         for (MediaEntry e : allEntries) {
@@ -561,9 +575,10 @@ public final class WallpaperPickerActivity extends Activity {
     private void saveSingleSelection(MediaEntry entry, String style) {
         SharedPreferences prefs = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
         boolean isScreensaver = MODE_SCREENSAVER.equals(mode);
-        String modeKey = isScreensaver ? PREF_SCREENSAVER_MODE : PREF_WALLPAPER_MODE;
-        String pathKey = isScreensaver ? PREF_CUSTOM_SCREENSAVER : PREF_CUSTOM_WALLPAPER;
-        String styleKey = isScreensaver ? PREF_SCREENSAVER_STYLE : PREF_WALLPAPER_STYLE;
+        boolean isMusic = MODE_MUSIC.equals(mode);
+        String modeKey = isMusic ? PREF_MUSIC_MODE : (isScreensaver ? PREF_SCREENSAVER_MODE : PREF_WALLPAPER_MODE);
+        String pathKey = isMusic ? PREF_CUSTOM_MUSIC : (isScreensaver ? PREF_CUSTOM_SCREENSAVER : PREF_CUSTOM_WALLPAPER);
+        String styleKey = isMusic ? PREF_MUSIC_STYLE : (isScreensaver ? PREF_SCREENSAVER_STYLE : PREF_WALLPAPER_STYLE);
 
         long rev = prefs.getLong(Config.SETTINGS_REVISION_KEY, 0) + 1;
         prefs.edit()
@@ -574,9 +589,9 @@ public final class WallpaperPickerActivity extends Activity {
                 .commit();
 
         String styleName = SeamlessVideoController.STYLE_BOUNCE.equals(style) ? "Modo rebote" : "En bucle";
+        String prefix = isMusic ? "Fondo de música aplicado: " : (isScreensaver ? "Salvapantalla aplicado: " : "Fondo aplicado: ");
         Toast.makeText(this,
-                (isScreensaver ? "Salvapantalla aplicado: " : "Fondo aplicado: ")
-                        + entry.displayName + " (" + styleName + ")",
+                prefix + entry.displayName + " (" + styleName + ")",
                 Toast.LENGTH_SHORT).show();
         setResult(RESULT_OK);
         finish();

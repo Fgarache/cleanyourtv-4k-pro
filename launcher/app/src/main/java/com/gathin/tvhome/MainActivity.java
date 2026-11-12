@@ -3940,13 +3940,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void showWallpaperMenu(View anchor) {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
-        PopupWindow popup = glassPopup(panel, (int) (210 * density));
+        PopupWindow popup = glassPopup(panel, (int) (220 * density));
         addInputRow(rows, popup, R.drawable.ic_wallpaper, "Fondo", -1,
                 () -> root.post(() -> showWallpaperModeMenu(anchor, WallpaperPickerActivity.MODE_WALLPAPER)));
         addInputRow(rows, popup, R.drawable.ic_wallpaper, "Salvapantalla", -1,
                 () -> root.post(() -> showWallpaperModeMenu(anchor, WallpaperPickerActivity.MODE_SCREENSAVER)));
+        addInputRow(rows, popup, R.drawable.ic_music_note, "Fondo de música", -1,
+                () -> root.post(() -> showWallpaperModeMenu(anchor, WallpaperPickerActivity.MODE_MUSIC)));
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        popup.setWidth(Math.max((int) (210 * density), panel.getMeasuredWidth()));
+        popup.setWidth(Math.max((int) (220 * density), panel.getMeasuredWidth()));
         dropIn(popup, panel, anchor, Gravity.END);
         rows.getChildAt(0).requestFocus();
     }
@@ -4032,18 +4034,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void saveRandomConfig(String targetMode, String category, int intervalMin, String style) {
         SharedPreferences prefs = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
         boolean isScreensaver = WallpaperPickerActivity.MODE_SCREENSAVER.equals(targetMode);
-        String modeKey = isScreensaver
-                ? WallpaperPickerActivity.PREF_SCREENSAVER_MODE
-                : WallpaperPickerActivity.PREF_WALLPAPER_MODE;
-        String catKey = isScreensaver
-                ? WallpaperPickerActivity.PREF_SCREENSAVER_CATEGORY
-                : WallpaperPickerActivity.PREF_WALLPAPER_CATEGORY;
-        String intKey = isScreensaver
-                ? WallpaperPickerActivity.PREF_SCREENSAVER_INTERVAL
-                : WallpaperPickerActivity.PREF_WALLPAPER_INTERVAL;
-        String styleKey = isScreensaver
-                ? WallpaperPickerActivity.PREF_SCREENSAVER_STYLE
-                : WallpaperPickerActivity.PREF_WALLPAPER_STYLE;
+        boolean isMusic = WallpaperPickerActivity.MODE_MUSIC.equals(targetMode);
+        String modeKey = isMusic
+                ? WallpaperPickerActivity.PREF_MUSIC_MODE
+                : (isScreensaver
+                        ? WallpaperPickerActivity.PREF_SCREENSAVER_MODE
+                        : WallpaperPickerActivity.PREF_WALLPAPER_MODE);
+        String catKey = isMusic
+                ? WallpaperPickerActivity.PREF_MUSIC_CATEGORY
+                : (isScreensaver
+                        ? WallpaperPickerActivity.PREF_SCREENSAVER_CATEGORY
+                        : WallpaperPickerActivity.PREF_WALLPAPER_CATEGORY);
+        String intKey = isMusic
+                ? WallpaperPickerActivity.PREF_MUSIC_INTERVAL
+                : (isScreensaver
+                        ? WallpaperPickerActivity.PREF_SCREENSAVER_INTERVAL
+                        : WallpaperPickerActivity.PREF_WALLPAPER_INTERVAL);
+        String styleKey = isMusic
+                ? WallpaperPickerActivity.PREF_MUSIC_STYLE
+                : (isScreensaver
+                        ? WallpaperPickerActivity.PREF_SCREENSAVER_STYLE
+                        : WallpaperPickerActivity.PREF_WALLPAPER_STYLE);
 
         long rev = prefs.getLong(Config.SETTINGS_REVISION_KEY, 0) + 1;
         prefs.edit()
@@ -4056,11 +4067,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         String catLabel = "ALL".equals(category) ? "Todas" : category;
         String styleLabel = SeamlessVideoController.STYLE_BOUNCE.equals(style) ? "Modo rebote" : "En bucle";
+        String modeLabel = isMusic ? "Fondo de música aleatorio: " : (isScreensaver ? "Salvapantalla aleatorio: " : "Fondo aleatorio: ");
         Toast.makeText(this,
-                (isScreensaver ? "Salvapantalla aleatorio: " : "Fondo aleatorio: ")
-                        + catLabel + " · " + intervalMin + " min · " + styleLabel,
+                modeLabel + catLabel + " · " + intervalMin + " min · " + styleLabel,
                 Toast.LENGTH_SHORT).show();
-        if (!isScreensaver) {
+        if (!isScreensaver && !isMusic) {
             settingsRevision = rev;
             wallpaperPlayer.reloadInPlace();
         }

@@ -155,9 +155,24 @@ public final class SeamlessVideoController implements TextureView.SurfaceTexture
         intervalMs = mins * 60_000L;
 
         if (isScreensaver && musicOverride) {
-            playbackMode = MODE_RANDOM;
-            category = "Music";
-            intervalMs = 15_000L;
+            String musicMode = prefs.getString(WallpaperPickerActivity.PREF_MUSIC_MODE, null);
+            if (musicMode != null) {
+                playbackMode = musicMode;
+                if (MODE_SINGLE.equals(musicMode)) {
+                    pathKey = WallpaperPickerActivity.PREF_CUSTOM_MUSIC;
+                    styleKey = WallpaperPickerActivity.PREF_MUSIC_STYLE;
+                    playStyle = prefs.getString(styleKey, STYLE_BOUNCE);
+                } else {
+                    category = prefs.getString(WallpaperPickerActivity.PREF_MUSIC_CATEGORY, "Music");
+                    styleKey = WallpaperPickerActivity.PREF_MUSIC_STYLE;
+                    playStyle = prefs.getString(styleKey, STYLE_BOUNCE);
+                    intervalMs = 15_000L;
+                }
+            } else {
+                playbackMode = MODE_RANDOM;
+                category = "Music";
+                intervalMs = 15_000L;
+            }
         }
 
         if (!isScreensaver && MODE_NONE.equals(playbackMode)) {
