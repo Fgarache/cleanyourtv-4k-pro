@@ -191,6 +191,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean dockAutoHidden = false;
     private boolean wakeUpConsumedDown = false;
     private int homeVizRestBottomMargin = 0;
+    private View dockIndicator;
+    private int rowShiftHeight = 0;
+    private boolean isTwoRowsExpanded = false;
+    private ValueAnimator dockExpandAnimator;
     private final Runnable hideDockForMusic = this::autoHideDockForMusic;
     private TextView mediaTitle;
     private ImageView mediaAppIcon;
@@ -654,6 +658,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         libraryExcludedApps = new HashSet<>(cfg.libraryExcludedApps);
 
         grid = findViewById(R.id.grid);
+        dockIndicator = findViewById(R.id.dockIndicator);
         rtlAppGrid = getResources().getBoolean(R.bool.rtl_app_grid);
         // Mirror only the app grid; the header and other locales keep their own layouts.
         // single_row: one span laid out sideways, so the same adapter, glass and dock band serve a scrolling row.
@@ -792,14 +797,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     grid.requestLayout();
                 });
             }
-            if (MainActivity.this.dockRow && !singleRow) {
-                int tileH = AppAdapter.tileHeightPx(tileW);
-                int clipTop = Math.max(0, want - Math.round(4 * density));
-                int clipBottom = Math.min(h, want + tileH + Math.round(31 * density));
-                grid.setClipBounds(new Rect(0, clipTop, r - l, clipBottom));
-            } else {
-                grid.setClipBounds(null);
-            }
+            rowShiftHeight = dockRow;
+            grid.setClipBounds(null);
             // Cold start or column count > 4: the first focus can run before the grid has its final width or
             // padding, leaving the glass at the XML design size until a key is pressed.
             grid.post(this::refitGlass);
@@ -1262,6 +1261,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         adapter.promoteActiveOpenApp();
         adapter.notifyDataSetChanged();
+        collapseToOneRow();
         wakeDockFromAutoHide();
         updateMediaWidget();
         updateAudioRouteButton();
@@ -1460,6 +1460,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (!resumed || dockAutoHidden || reordering || openPopup != null || appLibrary != null || cardPrompt != null) return;
         if (!MediaBridgeService.isPlaying(this)) return;
         dockAutoHidden = true;
+        if (isTwoRowsExpanded) {
+            collapseToOneRow();
+        }
         float slide = 110f * density;
         grid.animate().cancel();
         grid.animate().alpha(0f).translationY(slide).setDuration(380).start();
@@ -1468,6 +1471,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (homeVisualizer != null) {
             homeVisualizer.animate().cancel();
             homeVisualizer.animate().translationY(homeVizRestBottomMargin).setDuration(380).start();
+        }
+        if (dockIndicator != null) {
+            dockIndicator.setVisibility(View.VISIBLE);
+            dockIndicator.animate().cancel();
+            dockIndicator.animate().alpha(1f).setDuration(300).start();
         }
     }
 
@@ -1483,6 +1491,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (homeVisualizer != null) {
             homeVisualizer.animate().cancel();
             homeVisualizer.animate().translationY(0f).setDuration(240).start();
+        }
+        if (dockIndicator != null) {
+            dockIndicator.animate().cancel();
+            dockIndicator.animate().alpha(0f).setDuration(200).withEndAction(() -> dockIndicator.setVisibility(View.GONE)).start();
         }
     }
 
@@ -1985,6 +1997,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (isTwoRowsExpanded) {
+            collapseToOneRow();
+            int target = Math.max(0, (lastFocused % COLUMNS));
+            focusTile(target);
+            return;
+        }
         // Home screen: Back goes nowhere, unless back_opens_clock is on.
         if (backOpensClock) startActivity(new Intent(this, ClockActivity.class));
     }
@@ -2035,13 +2053,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         View item = (View) card.getParent();
-        if (dockRow && !singleRow) {
-            int decoratedTop = item.getTop() - (int) (6 * density);
-            int dy = decoratedTop - grid.getPaddingTop();
-            if (Math.abs(dy) > (int) (2 * density)) {
-                grid.scrollBy(0, dy);
-            }
-        }
+        // Skip grid.scrollBy when dockRow && !singleRow to preserve 2-row translation animation
         // Tile rect in root coordinates, using layout positions (ignores the scale animation).
         Rect r = tileRect;
         r.set(0, 0, card.getWidth(), card.getHeight());
@@ -2093,7 +2105,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y - glassScrollShift);
         }
         if (dockRow) {
-            showHero(position, r.top);
+            float heroDockTop = r.top;
+            if (position >= COLUMNS) {
+                heroDockTop = r.top - rowShiftHeight;
+            }
+            showHero(position, heroDockTop);
         } else {
             // Below the dock (or in a plain grid) the glow follows the tile without the big name; letting it
             // fade out left the grid on plain black.
@@ -2650,6 +2666,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     // ---- navigation ------------------------------------------------------------------------------
 
+    private void animateDockRowShift(float targetY) {
+        if (dockExpandAnimator != null) {
+            dockExpandAnimator.cancel();
+        }
+        float startY = grid.getTranslationY();
+        if (startY == targetY) return;
+        dockExpandAnimator = ValueAnimator.ofFloat(startY, targetY);
+        dockExpandAnimator.setDuration(220);
+        dockExpandAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+        dockExpandAnimator.addUpdateListener(anim -> {
+            float val = (Float) anim.getAnimatedValue();
+            grid.setTranslationY(val);
+            if (homeVisualizer != null) {
+                homeVisualizer.setTranslationY(val);
+            }
+            refitGlass();
+        });
+        dockExpandAnimator.start();
+    }
+
+    private void expandToTwoRows() {
+        if (isTwoRowsExpanded || rowShiftHeight <= 0) return;
+        isTwoRowsExpanded = true;
+        animateDockRowShift(-rowShiftHeight);
+    }
+
+    private void collapseToOneRow() {
+        if (!isTwoRowsExpanded) return;
+        isTwoRowsExpanded = false;
+        animateDockRowShift(0f);
+    }
+
     @Override
     public boolean onTileVerticalKey(int position, int keyCode) {
         int count = adapter.appCount();
@@ -2686,27 +2734,41 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 focusLibrary();
                 return true;
             }
-            // In the dock, the last app is the row's end: the empty slots after it take no focus.
-            int rowCount = position < COLUMNS ? Math.min(count, adapter.dockFilled()) : count;
-            return GridNavigation.atHorizontalEdge(position, rowCount, COLUMNS,
-                    rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
+            int rowStart = (position / COLUMNS) * COLUMNS;
+            int rowEnd = Math.min(rowStart + COLUMNS - 1, count - 1);
+            if (!forward && position == rowStart) return true;
+            if (forward && position >= rowEnd) return true;
+            return false;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
-            target = position - COLUMNS;
-        } else {
-            int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
-            if (position >= lastRowStart) {
-                if (adapter.isLibraryAt(count)) focusLibrary();
-                return true;
+            if (position < COLUMNS) {
+                if (position <= 2 && mediaWidget != null && mediaWidget.getVisibility() == View.VISIBLE
+                        && btnMediaPlayPause != null && btnMediaPlayPause.getVisibility() == View.VISIBLE) {
+                    btnMediaPlayPause.requestFocus();
+                    return true;
+                }
+                return false;          // dock row: let focus move to the top bar
             }
-            target = Math.min(position + COLUMNS, count - 1);
+            collapseToOneRow();
+            target = position - COLUMNS;
+            focusTile(target);
+            grid.playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
+            return true;
+        } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (position < COLUMNS) {
+                if (count > COLUMNS) {
+                    expandToTwoRows();
+                    target = Math.min(position + COLUMNS, count - 1);
+                    focusTile(target);
+                    grid.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
+                    return true;
+                }
+                return true;
+            } else {
+                return true; // max 2 rows
+            }
         }
-        focusTile(target);
-        // The default focus search clicks for Left/Right; Up/Down are handled here, so click for them too.
-        grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_UP
-                ? SoundEffectConstants.NAVIGATION_UP : SoundEffectConstants.NAVIGATION_DOWN);
-        return true;
+        return false;
     }
 
     @Override public void onLibraryFocused() {

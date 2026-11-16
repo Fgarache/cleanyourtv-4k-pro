@@ -545,6 +545,37 @@
         </FrameLayout>
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/dockIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:background="@drawable/pill_bg"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:visibility="gone"
+        android:focusable="false"
+        android:alpha="0">
+
+        <ImageView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_arrow_down"
+            android:tint="#D9FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="Apps (Abajo)"
+            android:textColor="#D9FFFFFF"
+            android:textSize="12sp"
+            android:fontFamily="@string/font_medium" />
+    </LinearLayout>
+
     <!-- The single floating glass highlight that springs between tiles. -->
     <com.gathin.tvhome.GlassView
         android:id="@+id/glass"
