@@ -33,13 +33,14 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     /** dock_band_all: in a single row, the band runs behind every app instead of the dock apps only. */
     private final boolean bandAll;
 
-    public interface ExpansionProvider {
+    public interface DockStateProvider {
         boolean isExpanded();
+        int getTopVisibleRow();
     }
-    private ExpansionProvider expansionProvider;
+    private DockStateProvider dockStateProvider;
 
-    void setExpansionProvider(ExpansionProvider provider) {
-        this.expansionProvider = provider;
+    void setDockStateProvider(DockStateProvider provider) {
+        this.dockStateProvider = provider;
     }
 
     DockDecoration(int dockSize, float density, boolean translucent, boolean names, int opacity, boolean lightGlass,
@@ -85,8 +86,9 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     @Override
     public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
         if (!bandVisible) return;
-        boolean expanded = expansionProvider != null && expansionProvider.isExpanded();
-        int maxAllowedRow = expanded ? 1 : 0;
+        boolean expanded = dockStateProvider != null && dockStateProvider.isExpanded();
+        int topRow = (dockStateProvider != null && expanded) ? dockStateProvider.getTopVisibleRow() : 0;
+        int bottomRow = expanded ? (topRow + 1) : 0;
         boolean any = false;
         int cardWidth = 0;
         for (int i = 0; i < parent.getChildCount(); i++) {
@@ -94,8 +96,10 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             int pos = parent.getChildAdapterPosition(child);
             if (pos < 0) continue;
             if (parent.getAdapter() instanceof AppAdapter && ((AppAdapter) parent.getAdapter()).isLibraryAt(pos)) continue;
-            int row = singleRow ? 0 : pos / dockSize;
-            if (row > maxAllowedRow) continue;
+            int row = pos / dockSize;
+            boolean visible = (row >= topRow && row <= bottomRow);
+            child.setAlpha(visible ? 1f : 0f);
+            if (!visible) continue;
             RecyclerView.ViewHolder vh = parent.getChildViewHolder(child);
             View card = vh instanceof AppAdapter.Holder ? ((AppAdapter.Holder) vh).card : child.findViewById(R.id.card);
             if (card == null) continue;

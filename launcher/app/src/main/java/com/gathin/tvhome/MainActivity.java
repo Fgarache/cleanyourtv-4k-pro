@@ -73,6 +73,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.dynamicanimation.animation.DynamicAnimation;
 import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
@@ -735,7 +736,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (dockRow) {
             DockDecoration deco = new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding, cfg.dockBand,
                     singleRow, cfg.dockBandAll);
-            deco.setExpansionProvider(() -> isTwoRowsExpanded);
+            deco.setDockStateProvider(new DockDecoration.DockStateProvider() {
+                @Override
+                public boolean isExpanded() {
+                    return isTwoRowsExpanded;
+                }
+
+                @Override
+                public int getTopVisibleRow() {
+                    return MainActivity.this.getTopVisibleRow();
+                }
+            });
             grid.addItemDecoration(deco);
         }
         if (cfg.fadeRows) TopFade.attach(grid, 48 * density);
@@ -751,9 +762,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.setSavedOrder(Order.ranks(savedOrder, dockApps), Order.docked(savedOrder, dockApps));
         grid.setAdapter(adapter);
 
-        // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
-        // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
-        int rowsBelowDock = cfg.rowsBelowDock;
+        // tvOS layout: push the dock row towards the bottom of the screen.
+        // Forced to 0 so exactly 1 row is visible initially, expanding to 2 rows on Down.
+        int rowsBelowDock = 0;
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
@@ -813,14 +824,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
                 if (!glassShown) return;
-                glassTargetY -= dy;
-                glassScrollShift -= dy;
-                glass.setTranslationY(glass.getTranslationY() - dy);
-                // single_row scrolls sideways: the same bookkeeping on the other axis.
-                if (dx != 0) {
-                    glassTargetX -= dx;
-                    glassScrollShiftX -= dx;
-                    glass.setTranslationX(glass.getTranslationX() - dx);
+                RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(lastFocused);
+                if (vh != null) {
+                    View card = vh.itemView.findViewById(R.id.card);
+                    if (card != null && card.getWidth() > 0) {
+                        Rect r = tileRect;
+                        r.set(0, 0, card.getWidth(), card.getHeight());
+                        root.offsetDescendantRectToMyCoords(card, r);
+                        float scale = adapter.focusScale();
+                        float pad = 6f * density;
+                        float w = card.getWidth() * scale + 2 * pad;
+                        float h = card.getHeight() * scale + 2 * pad;
+                        float x = r.exactCenterX() - w / 2f;
+                        float y = r.exactCenterY() - h / 2f;
+                        springX.animateToFinalPosition(x);
+                        springY.animateToFinalPosition(y);
+                    }
                 }
             }
         });
@@ -842,28 +861,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
 
         // Liquid feel: soft springs on the highlight's position.
-        springX = new SpringAnimation(glass, new FloatPropertyCompat<View>("glassContentX") {
-            @Override
-            public float getValue(View v) {
-                return v.getTranslationX() - glassScrollShiftX;
-            }
-
-            @Override
-            public void setValue(View v, float value) {
-                v.setTranslationX(value + glassScrollShiftX);
-            }
-        });
-        springY = new SpringAnimation(glass, new FloatPropertyCompat<View>("glassContentY") {
-            @Override
-            public float getValue(View v) {
-                return v.getTranslationY() - glassScrollShift;
-            }
-
-            @Override
-            public void setValue(View v, float value) {
-                v.setTranslationY(value + glassScrollShift);
-            }
-        });
+        springX = new SpringAnimation(glass, DynamicAnimation.TRANSLATION_X);
+        springY = new SpringAnimation(glass, DynamicAnimation.TRANSLATION_Y);
         for (SpringAnimation s : new SpringAnimation[]{springX, springY}) {
             if (reducedMotion) {
                 Motion.reduce(s);
@@ -2001,10 +2000,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (isTwoRowsExpanded) {
+        if (isTwoRowsExpanded || lastFocused >= COLUMNS) {
             collapseToOneRow();
-            int target = Math.max(0, (lastFocused % COLUMNS));
-            focusTile(target);
+            focusTile(Math.max(0, (lastFocused % COLUMNS)));
             return;
         }
         // Home screen: Back goes nowhere, unless back_opens_clock is on.
@@ -2114,11 +2112,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y);
         }
         if (dockRow) {
-            float heroDockTop = r.top + gridAnimDeltaY;
-            if (position >= COLUMNS) {
-                heroDockTop -= rowShiftHeight;
-            }
-            showHero(position, heroDockTop);
+            float dockTop = (isTwoRowsExpanded ? (grid.getPaddingTop() - rowShiftHeight) : grid.getPaddingTop()) + grid.getTop();
+            showHero(position, dockTop);
         } else {
             // Below the dock (or in a plain grid) the glow follows the tile without the big name; letting it
             // fade out left the grid on plain black.
@@ -2705,6 +2700,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         dockExpandAnimator.start();
     }
 
+    public int getTopVisibleRow() {
+        if (!isTwoRowsExpanded) return 0;
+        int r = lastFocused / COLUMNS;
+        return Math.max(0, r - 1);
+    }
+
     private void expandToTwoRows() {
         if (rowShiftHeight <= 0) {
             rowShiftHeight = Math.round(140 * density);
@@ -2719,10 +2720,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             isTwoRowsExpanded = false;
             animateDockRowShift(0f);
         }
-        if (lastFocused >= COLUMNS) {
-            int target = lastFocused % COLUMNS;
-            focusTile(target);
+        GridLayoutManager lm = (GridLayoutManager) grid.getLayoutManager();
+        if (lm != null && lm.findFirstVisibleItemPosition() != 0) {
+            lm.scrollToPositionWithOffset(0, 0);
         }
+        grid.invalidateItemDecorations();
     }
 
     @Override
@@ -2753,22 +2755,49 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
             return !forward && position == 0;
         }
-        // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
-        // escapes up into the top bar. Mid-row moves fall through to the default focus search.
+        // Horizontal: continuous movement across rows
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
-            if (forward && position == adapter.focusablePosition(count - 1) && adapter.isLibraryAt(count)) {
-                focusLibrary();
-                return true;
-            }
-            int rowStart = (position / COLUMNS) * COLUMNS;
+            boolean isRight = !rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_RIGHT : keyCode == KeyEvent.KEYCODE_DPAD_LEFT;
+            boolean isLeft = !rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
+            int row = position / COLUMNS;
+            int rowStart = row * COLUMNS;
             int rowEnd = Math.min(rowStart + COLUMNS - 1, count - 1);
-            if (!forward && position == rowStart) return true;
-            if (forward && position >= rowEnd) return true;
-            return false;
+
+            if (isRight) {
+                if (position >= rowEnd) {
+                    // Rightmost app of the current row: wrap to the first app of next row
+                    if (position + 1 < count) {
+                        target = position + 1;
+                        if (row == 0) {
+                            expandToTwoRows();
+                        }
+                        focusTile(target);
+                        grid.playSoundEffect(SoundEffectConstants.NAVIGATION_RIGHT);
+                        return true;
+                    }
+                    return true; // At the very end of all apps
+                }
+                return false; // Move right within the row
+            } else if (isLeft) {
+                if (position <= rowStart) {
+                    // Leftmost app of the current row: wrap to the last app of previous row
+                    if (row > 0) {
+                        target = rowStart - 1;
+                        if (row == 1) {
+                            collapseToOneRow();
+                        }
+                        focusTile(target);
+                        grid.playSoundEffect(SoundEffectConstants.NAVIGATION_LEFT);
+                        return true;
+                    }
+                    return true; // At app 0, stay put
+                }
+                return false; // Move left within the row
+            }
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) {
+            int row = position / COLUMNS;
+            if (row == 0) {
                 if (position <= 2 && mediaWidget != null && mediaWidget.getVisibility() == View.VISIBLE
                         && btnMediaPlayPause != null && btnMediaPlayPause.getVisibility() == View.VISIBLE) {
                     btnMediaPlayPause.requestFocus();
@@ -2776,23 +2805,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 }
                 return false;          // dock row: let focus move to the top bar
             }
-            collapseToOneRow();
-            target = position - COLUMNS;
-            focusTile(target);
-            grid.playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
-            return true;
+            if (row == 1) {
+                collapseToOneRow();
+                target = position - COLUMNS;
+                focusTile(target);
+                grid.playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
+                return true;
+            } else {
+                target = position - COLUMNS;
+                focusTile(target);
+                grid.playSoundEffect(SoundEffectConstants.NAVIGATION_UP);
+                return true;
+            }
         } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (position < COLUMNS) {
+            int row = position / COLUMNS;
+            if (row == 0) {
                 if (count > COLUMNS) {
                     expandToTwoRows();
-                    target = Math.min(position + COLUMNS, Math.min(count - 1, 2 * COLUMNS - 1));
+                    target = Math.min(position + COLUMNS, count - 1);
                     focusTile(target);
                     grid.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
                     return true;
                 }
                 return true;
             } else {
-                return true; // strictly 2 rows max: no 3rd row ever
+                int nextRowStart = (row + 1) * COLUMNS;
+                if (nextRowStart < count) {
+                    target = Math.min(position + COLUMNS, count - 1);
+                    focusTile(target);
+                    grid.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
+                    return true;
+                }
+                return true; // Already on the last row
             }
         }
         return false;
@@ -2989,21 +3033,48 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else firstTopButton().requestFocus();
             return;
         }
-        final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, Math.min(adapter.appCount() - 1, 2 * COLUMNS - 1))));
+        final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, adapter.appCount() - 1)));
+        int r = pos / COLUMNS;
+        int targetScrollPos = (r == 0) ? 0 : (r - 1) * COLUMNS;
+        GridLayoutManager lm = (GridLayoutManager) grid.getLayoutManager();
+        int currentFirst = lm != null ? lm.findFirstVisibleItemPosition() : 0;
+        if (lm != null && currentFirst != targetScrollPos) {
+            lm.scrollToPositionWithOffset(targetScrollPos, 0);
+            grid.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    grid.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                    RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
+                    if (h != null) {
+                        View c = h.itemView.findViewById(R.id.card);
+                        if (c.isFocused()) onTileFocused(pos, c);
+                        else c.requestFocus();
+                    }
+                    grid.invalidateItemDecorations();
+                }
+            });
+            return;
+        }
         RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
         if (vh != null) {
             View card = vh.itemView.findViewById(R.id.card);
             // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
             if (card.isFocused()) onTileFocused(pos, card);
             else card.requestFocus();
+            grid.invalidateItemDecorations();
             return;
         }
-        grid.post(() -> {
-            RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
-            if (h != null) {
-                View c = h.itemView.findViewById(R.id.card);
-                if (c.isFocused()) onTileFocused(pos, c);
-                else c.requestFocus();
+        grid.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                grid.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
+                if (h != null) {
+                    View c = h.itemView.findViewById(R.id.card);
+                    if (c.isFocused()) onTileFocused(pos, c);
+                    else c.requestFocus();
+                }
+                grid.invalidateItemDecorations();
             }
         });
     }
