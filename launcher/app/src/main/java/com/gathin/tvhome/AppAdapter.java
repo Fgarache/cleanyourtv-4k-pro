@@ -619,6 +619,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             if (ctx.getPackageManager().resolveActivity(byAction, 0) != null) i = byAction;
         }
         try {
+            MediaBridgeService.checkCloseMusicIfEnteringOtherApp(ctx, e.pkg);
             if (isKeepAliveMediaApp(e.pkg, e.label)) {
                 ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
                         .edit()

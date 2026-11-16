@@ -48,17 +48,43 @@ public final class MediaBridgeService extends NotificationListenerService {
             for (MediaController mc : list) {
                 PlaybackState st = mc.getPlaybackState();
                 if (st != null && st.getState() == PlaybackState.STATE_PLAYING) {
+                    ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
+                            .edit()
+                            .putBoolean("media_app_explicitly_closed", false)
+                            .putString(AppAdapter.PREF_ACTIVE_MEDIA_PKG, mc.getPackageName())
+                            .apply();
                     return mc;
                 }
+            }
+            boolean explicitlyClosed = ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
+                    .getBoolean("media_app_explicitly_closed", false);
+            if (explicitlyClosed) {
+                return null;
             }
             String activePkg = ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
                     .getString(AppAdapter.PREF_ACTIVE_MEDIA_PKG, "");
             if (activePkg != null && !activePkg.isEmpty()) {
                 for (MediaController mc : list) {
-                    if (activePkg.equals(mc.getPackageName())) return mc;
+                    if (activePkg.equals(mc.getPackageName())) {
+                        PlaybackState st = mc.getPlaybackState();
+                        int s = st != null ? st.getState() : PlaybackState.STATE_NONE;
+                        if (s != PlaybackState.STATE_NONE && s != PlaybackState.STATE_STOPPED) {
+                            return mc;
+                        }
+                    }
                 }
             }
-            return list.get(0);
+            for (MediaController mc : list) {
+                PlaybackState st = mc.getPlaybackState();
+                int s = st != null ? st.getState() : PlaybackState.STATE_NONE;
+                if (s == PlaybackState.STATE_PAUSED || s == PlaybackState.STATE_BUFFERING) {
+                    MediaMetadata meta = mc.getMetadata();
+                    if (meta != null && meta.getText(MediaMetadata.METADATA_KEY_TITLE) != null) {
+                        return mc;
+                    }
+                }
+            }
+            return null;
         } catch (Throwable ignored) {
             return null;
         }
@@ -184,6 +210,30 @@ public final class MediaBridgeService extends NotificationListenerService {
         sendMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_NEXT);
     }
 
+    public static void play(Context ctx) {
+        MediaController mc = findController(ctx);
+        if (mc != null) {
+            try {
+                mc.getTransportControls().play();
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        sendMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PLAY);
+    }
+
+    public static void pause(Context ctx) {
+        MediaController mc = findController(ctx);
+        if (mc != null) {
+            try {
+                mc.getTransportControls().pause();
+                return;
+            } catch (Throwable ignored) {
+            }
+        }
+        sendMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PAUSE);
+    }
+
     public static void stop(Context ctx) {
         MediaController mc = findController(ctx);
         if (mc != null) {
@@ -219,6 +269,8 @@ public final class MediaBridgeService extends NotificationListenerService {
         ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .remove(AppAdapter.PREF_ACTIVE_MEDIA_PKG)
+                .putBoolean("media_app_explicitly_closed", true)
+                .putString("closed_media_pkg", pkg != null ? pkg : "")
                 .apply();
         if (pkg != null && !pkg.isEmpty()) {
             try {
@@ -228,6 +280,20 @@ public final class MediaBridgeService extends NotificationListenerService {
             }
         }
         notifyChanged();
+    }
+
+    public static void checkCloseMusicIfEnteringOtherApp(Context ctx, String targetPkg) {
+        if (targetPkg == null || targetPkg.isEmpty()) return;
+        if (targetPkg.equals(ctx.getPackageName())) return;
+
+        String activePkg = ctx.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE)
+                .getString(AppAdapter.PREF_ACTIVE_MEDIA_PKG, "");
+        String playingPkg = getActivePackage(ctx);
+        String currentMedia = !activePkg.isEmpty() ? activePkg : playingPkg;
+
+        if (currentMedia != null && !currentMedia.isEmpty() && !currentMedia.equals(targetPkg)) {
+            closeApp(ctx, currentMedia);
+        }
     }
 
     private static void sendMediaKey(Context ctx, int keyCode) {

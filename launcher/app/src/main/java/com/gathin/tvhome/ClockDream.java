@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.service.dreams.DreamService;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -44,7 +45,7 @@ public class ClockDream extends DreamService {
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
-        setInteractive(false);
+        setInteractive(true);
         setFullscreen(true);
         setScreenBright(false);
 
@@ -176,5 +177,16 @@ public class ClockDream extends DreamService {
             clockRefresh.stop();
         }
         super.onDetachedFromWindow();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (RemoteKeys.isMediaControlKey(event.getKeyCode())) {
+            RemoteKeys.handleMediaKey(this, event);
+            handler.postDelayed(this::updateScreensaverMedia, 250);
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_UP) finish();
+        return true;
     }
 }

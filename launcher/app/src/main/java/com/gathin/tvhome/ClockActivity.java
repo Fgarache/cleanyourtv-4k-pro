@@ -182,6 +182,11 @@ public class ClockActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (RemoteKeys.isMediaControlKey(event.getKeyCode())) {
+            RemoteKeys.handleMediaKey(this, event);
+            handler.postDelayed(this::updateScreensaverMedia, 250);
+            return true;
+        }
         if (event.getAction() == KeyEvent.ACTION_UP) finish();
         return true;
     }

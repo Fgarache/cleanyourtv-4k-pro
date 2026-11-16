@@ -3549,6 +3549,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void open(Intent i) {
+        String targetPkg = i.getPackage();
+        if (targetPkg == null && i.getComponent() != null) targetPkg = i.getComponent().getPackageName();
+        MediaBridgeService.checkCloseMusicIfEnteringOtherApp(this, targetPkg);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             startActivity(i);
@@ -3576,6 +3579,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      *  throws SecurityException, which used to take Home down with it (YaOS before the manifest asked
      *  for ACCESS_TV_SOURCE). */
     private void openInput(String inputId) {
+        MediaBridgeService.closeApp(this, null);
         // A CEC device is a child input of its HDMI port; the vendor source number belongs to the port
         // (MiTV-MFFU0). Only that lookup uses the parent: the generic path below still opens the child.
         String sourceId = inputId;
@@ -4263,11 +4267,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
         String activeMediaPkg = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE)
                 .getString(AppAdapter.PREF_ACTIVE_MEDIA_PKG, "");
-        if (pkg.equals(activeMediaPkg)) {
+        String playingPkg = MediaBridgeService.getActivePackage(this);
+        if (pkg.equals(activeMediaPkg) || (playingPkg != null && pkg.equals(playingPkg))) {
             addCustomMenuRow(rows, popup, "Cerrar", () -> {
                 MediaBridgeService.closeApp(this, pkg);
                 reloadApps(false);
-                updateMediaWidget();
+                handler.postDelayed(this::updateMediaWidget, 100);
+                handler.postDelayed(this::updateMediaWidget, 400);
             });
         }
         if (dockRow && position < adapter.movableCount()) {

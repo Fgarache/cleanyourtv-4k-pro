@@ -469,6 +469,7 @@ final class RemoteKeys {
             return;
         }
         ComponentName activity = isActivity(pkg) ? ComponentName.unflattenFromString(pkg) : null;
+        MediaBridgeService.checkCloseMusicIfEnteringOtherApp(ctx, activity != null ? activity.getPackageName() : pkg);
         if (activity != null) {
             try {
                 ctx.startActivity(new Intent().setComponent(activity).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -485,29 +486,63 @@ final class RemoteKeys {
         }
     }
 
-    public static boolean handleColorMediaKeys(Context context, KeyEvent event) {
+    public static boolean isMediaControlKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_PROG_RED:
+            case KeyEvent.KEYCODE_PROG_GREEN:
+            case KeyEvent.KEYCODE_PROG_YELLOW:
+            case KeyEvent.KEYCODE_PROG_BLUE:
+            case KeyEvent.KEYCODE_MEDIA_NEXT:
+            case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_STOP:
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public static boolean handleMediaKey(Context context, KeyEvent event) {
         int code = event.getKeyCode();
-        if (code == KeyEvent.KEYCODE_PROG_RED) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                MediaBridgeService.next(context);
-            }
-            return true;
-        } else if (code == KeyEvent.KEYCODE_PROG_GREEN) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                MediaBridgeService.playPause(context);
-            }
-            return true;
-        } else if (code == KeyEvent.KEYCODE_PROG_YELLOW) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                MediaBridgeService.stop(context);
-            }
-            return true;
-        } else if (code == KeyEvent.KEYCODE_PROG_BLUE) {
+        if (code == KeyEvent.KEYCODE_PROG_RED || code == KeyEvent.KEYCODE_MEDIA_PREVIOUS || code == KeyEvent.KEYCODE_MEDIA_REWIND) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 MediaBridgeService.previous(context);
             }
             return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_GREEN || code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.playPause(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_MEDIA_PLAY) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.play(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.pause(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_YELLOW || code == KeyEvent.KEYCODE_MEDIA_STOP) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.stop(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_BLUE || code == KeyEvent.KEYCODE_MEDIA_NEXT || code == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.next(context);
+            }
+            return true;
         }
         return false;
+    }
+
+    public static boolean handleColorMediaKeys(Context context, KeyEvent event) {
+        return handleMediaKey(context, event);
     }
 }

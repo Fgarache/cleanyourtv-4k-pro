@@ -507,6 +507,7 @@ final class AppLibraryDialog {
 
     private void open(ResolveInfo app) {
         close();
+        MediaBridgeService.checkCloseMusicIfEnteringOtherApp(activity, app.activityInfo.packageName);
         Intent intent = new Intent(Intent.ACTION_MAIN).setComponent(
                 new ComponentName(app.activityInfo.packageName, app.activityInfo.name));
         // TV apps keep the leanback launch intent, so an app already running resumes instead of restarting.
