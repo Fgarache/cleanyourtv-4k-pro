@@ -548,7 +548,7 @@ final class Config {
         int clockWallpaperDim = res.getInteger(R.integer.clock_wallpaper_dim);
         boolean clockGlow = res.getBoolean(R.bool.clock_glow);
         String glassStyle = res.getString(R.string.glass_style);
-        boolean singleRow = res.getBoolean(R.bool.single_row);
+        boolean singleRow = false;
         boolean dockBandAll = res.getBoolean(R.bool.dock_band_all);
         boolean applied = false;
 
@@ -664,7 +664,7 @@ final class Config {
             clockWallpaper = bool(json, "clock_wallpaper", clockWallpaper);
             clockWallpaperDim = integer(json, "clock_wallpaper_dim", clockWallpaperDim, 0, 90);
             clockGlow = bool(json, "clock_glow", clockGlow);
-            singleRow = bool(json, "single_row", singleRow);
+            singleRow = false;
             dockBandAll = bool(json, "dock_band_all", dockBandAll);
             glowStyle = string(json, "glow_style", glowStyle);
             glassStyle = string(json, "glass_style", glassStyle);

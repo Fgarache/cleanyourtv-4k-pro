@@ -33,6 +33,15 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     /** dock_band_all: in a single row, the band runs behind every app instead of the dock apps only. */
     private final boolean bandAll;
 
+    public interface ExpansionProvider {
+        boolean isExpanded();
+    }
+    private ExpansionProvider expansionProvider;
+
+    void setExpansionProvider(ExpansionProvider provider) {
+        this.expansionProvider = provider;
+    }
+
     DockDecoration(int dockSize, float density, boolean translucent, boolean names, int opacity, boolean lightGlass,
                    boolean evenPadding, boolean bandVisible, boolean singleRow, boolean bandAll) {
         this.dockSize = Math.max(1, dockSize);
@@ -76,65 +85,57 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     @Override
     public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
         if (!bandVisible) return;
-        int maxRow = -1;
+        boolean expanded = expansionProvider != null && expansionProvider.isExpanded();
+        int maxAllowedRow = expanded ? 1 : 0;
+        boolean any = false;
+        int cardWidth = 0;
         for (int i = 0; i < parent.getChildCount(); i++) {
-            int pos = parent.getChildAdapterPosition(parent.getChildAt(i));
-            if (pos >= 0) {
-                int r = singleRow ? 0 : pos / dockSize;
-                if (r > maxRow) maxRow = r;
-            }
-        }
-        for (int targetRow = 0; targetRow <= maxRow; targetRow++) {
-            boolean any = false;
-            int cardWidth = 0;
-            for (int i = 0; i < parent.getChildCount(); i++) {
-                View child = parent.getChildAt(i);
-                int pos = parent.getChildAdapterPosition(child);
-                if (pos < 0) continue;
-                if (parent.getAdapter() instanceof AppAdapter && ((AppAdapter) parent.getAdapter()).isLibraryAt(pos)) continue;
-                int row = singleRow ? 0 : pos / dockSize;
-                if (row != targetRow) continue;
-                RecyclerView.ViewHolder vh = parent.getChildViewHolder(child);
-                View card = vh instanceof AppAdapter.Holder ? ((AppAdapter.Holder) vh).card : child.findViewById(R.id.card);
-                if (card == null) continue;
-                float l = child.getLeft() + card.getLeft();
-                float t = child.getTop() + card.getTop() + child.getTranslationY();
-                float r = l + card.getWidth();
-                float b = t + card.getHeight();
-                cardWidth = card.getWidth();
-                if (!any) {
-                    rect.set(l, t, r, b);
-                    any = true;
-                } else {
-                    rect.union(l, t, r, b);
-                }
-            }
-            if (!any) continue;
-            float pad = 10 * density;
-            float sidePad = 14 * density;
-            float side = Math.max(0f, Math.min(sidePad, Math.min(rect.left, parent.getWidth() - rect.right) - density));
-            float radius = AppAdapter.cornerRadius(cardWidth, density);
-            if (evenPadding) {
-                int inner = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
-                float room = (singleRow ? rect.top : Math.min(rect.top, Math.min(rect.left, parent.getWidth() - rect.right))) - density;
-                float even = evenPaddingPx(inner, dockSize, cardWidth, room);
-                rect.inset(-even, -even);
-                radius = radiusPx(radius, even);
+            View child = parent.getChildAt(i);
+            int pos = parent.getChildAdapterPosition(child);
+            if (pos < 0) continue;
+            if (parent.getAdapter() instanceof AppAdapter && ((AppAdapter) parent.getAdapter()).isLibraryAt(pos)) continue;
+            int row = singleRow ? 0 : pos / dockSize;
+            if (row > maxAllowedRow) continue;
+            RecyclerView.ViewHolder vh = parent.getChildViewHolder(child);
+            View card = vh instanceof AppAdapter.Holder ? ((AppAdapter.Holder) vh).card : child.findViewById(R.id.card);
+            if (card == null) continue;
+            float l = child.getLeft() + card.getLeft();
+            float t = child.getTop() + card.getTop() + child.getTranslationY();
+            float r = l + card.getWidth();
+            float b = t + card.getHeight();
+            cardWidth = card.getWidth();
+            if (!any) {
+                rect.set(l, t, r, b);
+                any = true;
             } else {
-                rect.inset(singleRow ? -sidePad : -side, -pad);
-                radius = 22 * density;
+                rect.union(l, t, r, b);
             }
-            if (singleRow) {
-                rect.left = density;
-                rect.right = parent.getWidth() - density;
-            }
-            rect.bottom += namesRoom;
-            if (lightGlass) {
-                band.setShader(new LinearGradient(0, rect.top, 0, rect.bottom, 0x24FFFFFF, 0x0DFFFFFF,
-                        Shader.TileMode.CLAMP));
-            }
-            c.drawRoundRect(rect, radius, radius, band);
-            c.drawRoundRect(rect, radius, radius, edge);
         }
+        if (!any) return;
+        float pad = 10 * density;
+        float sidePad = 14 * density;
+        float side = Math.max(0f, Math.min(sidePad, Math.min(rect.left, parent.getWidth() - rect.right) - density));
+        float radius = AppAdapter.cornerRadius(cardWidth, density);
+        if (evenPadding) {
+            int inner = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
+            float room = (singleRow ? rect.top : Math.min(rect.top, Math.min(rect.left, parent.getWidth() - rect.right))) - density;
+            float even = evenPaddingPx(inner, dockSize, cardWidth, room);
+            rect.inset(-even, -even);
+            radius = radiusPx(radius, even);
+        } else {
+            rect.inset(singleRow ? -sidePad : -side, -pad);
+            radius = 22 * density;
+        }
+        if (singleRow) {
+            rect.left = density;
+            rect.right = parent.getWidth() - density;
+        }
+        rect.bottom += namesRoom;
+        if (lightGlass) {
+            band.setShader(new LinearGradient(0, rect.top, 0, rect.bottom, 0x24FFFFFF, 0x0DFFFFFF,
+                    Shader.TileMode.CLAMP));
+        }
+        c.drawRoundRect(rect, radius, radius, band);
+        c.drawRoundRect(rect, radius, radius, edge);
     }
 }

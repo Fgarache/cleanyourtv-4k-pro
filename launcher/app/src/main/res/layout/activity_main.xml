@@ -517,7 +517,9 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="10dp">
+            android:layout_marginTop="10dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
 
             <com.gathin.tvhome.AudioSpectrumVisualizerView
                 android:id="@+id/homeVisualizer"
@@ -545,36 +547,24 @@
         </FrameLayout>
     </LinearLayout>
 
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/dockIndicator"
-        android:layout_width="wrap_content"
-        android:layout_height="32dp"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="16dp"
-        android:orientation="horizontal"
-        android:gravity="center"
         android:background="@drawable/pill_bg"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
         android:visibility="gone"
         android:focusable="false"
         android:alpha="0">
 
         <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_arrow_down"
             android:tint="#D9FFFFFF" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Apps (Abajo)"
-            android:textColor="#D9FFFFFF"
-            android:textSize="12sp"
-            android:fontFamily="@string/font_medium" />
-    </LinearLayout>
+    </FrameLayout>
 
     <!-- The single floating glass highlight that springs between tiles. -->
     <com.gathin.tvhome.GlassView

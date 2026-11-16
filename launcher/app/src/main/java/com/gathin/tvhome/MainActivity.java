@@ -523,7 +523,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         advancedEffects = cfg.animations && cfg.advancedEffects;
         reducedMotion = cfg.reducedMotion;
         dockRow = cfg.dockRow;
-        singleRow = cfg.singleRow;
+        singleRow = false;
         focusOvershoot = cfg.focusOvershoot;
         festival = cfg.festival;
         festive = festival.active(LocalDate.now());
@@ -732,8 +732,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public void onChildViewDetachedFromWindow(@NonNull View v) {
             }
         });
-        if (dockRow) grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding, cfg.dockBand,
-                singleRow, cfg.dockBandAll));
+        if (dockRow) {
+            DockDecoration deco = new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass, cfg.dockEvenPadding, cfg.dockBand,
+                    singleRow, cfg.dockBandAll);
+            deco.setExpansionProvider(() -> isTwoRowsExpanded);
+            grid.addItemDecoration(deco);
+        }
         if (cfg.fadeRows) TopFade.attach(grid, 48 * density);
         // Reduced motion: the tiles are simply there, with no entrance (reloadApps skips it there too).
         if (animations && !reducedMotion) {
@@ -2065,7 +2069,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float x = r.exactCenterX() - w / 2f;
         // advanced_effects lifts a focused grid tile by 4dp and the glass follows it; dock tiles stay put (#2135).
         boolean lifted = advancedEffects && !DockSlots.inDockRow(dockRow, singleRow, position, COLUMNS);
-        float y = r.exactCenterY() - h / 2f - (lifted ? 4f * density : 0f);
+        float targetGridTransY = isTwoRowsExpanded ? -rowShiftHeight : 0f;
+        float gridAnimDeltaY = targetGridTransY - grid.getTranslationY();
+        float cardFinalCenterY = r.exactCenterY() + gridAnimDeltaY;
+        float y = cardFinalCenterY - h / 2f - (lifted ? 4f * density : 0f);
+        glassScrollShift = 0f;
+        glassScrollShiftX = 0f;
 
         ViewGroup.LayoutParams lp = glass.getLayoutParams();
         if (lp.width != (int) w || lp.height != (int) h || card.getWidth() != glassCardW) {
@@ -2101,13 +2110,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             glass.setTranslationX(x);
             glass.setTranslationY(y);
         } else {
-            springX.animateToFinalPosition(x - glassScrollShiftX);
-            springY.animateToFinalPosition(y - glassScrollShift);
+            springX.animateToFinalPosition(x);
+            springY.animateToFinalPosition(y);
         }
         if (dockRow) {
-            float heroDockTop = r.top;
+            float heroDockTop = r.top + gridAnimDeltaY;
             if (position >= COLUMNS) {
-                heroDockTop = r.top - rowShiftHeight;
+                heroDockTop -= rowShiftHeight;
             }
             showHero(position, heroDockTop);
         } else {
@@ -2671,9 +2680,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             dockExpandAnimator.cancel();
         }
         float startY = grid.getTranslationY();
-        if (startY == targetY) return;
+        if (startY == targetY) {
+            grid.invalidateItemDecorations();
+            return;
+        }
         dockExpandAnimator = ValueAnimator.ofFloat(startY, targetY);
-        dockExpandAnimator.setDuration(220);
+        dockExpandAnimator.setDuration(240);
         dockExpandAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
         dockExpandAnimator.addUpdateListener(anim -> {
             float val = (Float) anim.getAnimatedValue();
@@ -2681,21 +2693,36 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (homeVisualizer != null) {
                 homeVisualizer.setTranslationY(val);
             }
-            refitGlass();
+            grid.invalidateItemDecorations();
+        });
+        dockExpandAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                grid.invalidateItemDecorations();
+                refitGlass();
+            }
         });
         dockExpandAnimator.start();
     }
 
     private void expandToTwoRows() {
-        if (isTwoRowsExpanded || rowShiftHeight <= 0) return;
+        if (rowShiftHeight <= 0) {
+            rowShiftHeight = Math.round(140 * density);
+        }
+        if (isTwoRowsExpanded) return;
         isTwoRowsExpanded = true;
         animateDockRowShift(-rowShiftHeight);
     }
 
     private void collapseToOneRow() {
-        if (!isTwoRowsExpanded) return;
-        isTwoRowsExpanded = false;
-        animateDockRowShift(0f);
+        if (isTwoRowsExpanded) {
+            isTwoRowsExpanded = false;
+            animateDockRowShift(0f);
+        }
+        if (lastFocused >= COLUMNS) {
+            int target = lastFocused % COLUMNS;
+            focusTile(target);
+        }
     }
 
     @Override
@@ -2758,14 +2785,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (position < COLUMNS) {
                 if (count > COLUMNS) {
                     expandToTwoRows();
-                    target = Math.min(position + COLUMNS, count - 1);
+                    target = Math.min(position + COLUMNS, Math.min(count - 1, 2 * COLUMNS - 1));
                     focusTile(target);
                     grid.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN);
                     return true;
                 }
                 return true;
             } else {
-                return true; // max 2 rows
+                return true; // strictly 2 rows max: no 3rd row ever
             }
         }
         return false;
@@ -2962,24 +2989,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else firstTopButton().requestFocus();
             return;
         }
-        final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, adapter.appCount() - 1)));
+        final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, Math.min(adapter.appCount() - 1, 2 * COLUMNS - 1))));
         RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
-        if (dockRow && !singleRow) {
-            int targetRowStart = (pos / COLUMNS) * COLUMNS;
-            GridLayoutManager lm = (GridLayoutManager) grid.getLayoutManager();
-            if (vh == null || Math.abs((vh.itemView.getTop() - (int) (6 * density)) - grid.getPaddingTop()) > (int) (2 * density)) {
-                lm.scrollToPositionWithOffset(targetRowStart, 0);
-                grid.post(() -> {
-                    RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
-                    if (h != null) {
-                        View c = h.itemView.findViewById(R.id.card);
-                        if (c.isFocused()) onTileFocused(pos, c);
-                        else c.requestFocus();
-                    }
-                });
-                return;
-            }
-        }
         if (vh != null) {
             View card = vh.itemView.findViewById(R.id.card);
             // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
@@ -2987,29 +2998,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else card.requestFocus();
             return;
         }
-        // Not laid out yet: scroll there, then focus once the scroll settles.
-        if (!animations) {
-            grid.scrollToPosition(pos);
-            grid.post(() -> {
-                RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
-                if (h != null) h.itemView.findViewById(R.id.card).requestFocus();
-            });
-            return;
-        }
-        pendingFocusScroll = new RecyclerView.OnScrollListener() {
-            @Override
-            public void onScrollStateChanged(@NonNull RecyclerView rv, int newState) {
-                if (newState != RecyclerView.SCROLL_STATE_IDLE) return;
-                rv.removeOnScrollListener(this);
-                if (pendingFocusScroll != this) return;
-                pendingFocusScroll = null;
-                RecyclerView.ViewHolder h = rv.findViewHolderForAdapterPosition(pos);
-                View target = h != null ? h.itemView.findViewById(R.id.card) : rv.getChildAt(0);
-                if (target != null) target.requestFocus();
+        grid.post(() -> {
+            RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
+            if (h != null) {
+                View c = h.itemView.findViewById(R.id.card);
+                if (c.isFocused()) onTileFocused(pos, c);
+                else c.requestFocus();
             }
-        };
-        grid.addOnScrollListener(pendingFocusScroll);
-        grid.smoothScrollToPosition(pos);
+        });
     }
 
     // ---- top bar ---------------------------------------------------------------------------------
