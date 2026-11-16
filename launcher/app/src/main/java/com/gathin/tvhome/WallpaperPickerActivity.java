@@ -89,14 +89,14 @@ public final class WallpaperPickerActivity extends Activity {
     }
 
     static File mediaDir(Context context) {
+        File sd = new File("/sdcard/wallpaper");
+        if (sd.isDirectory()) return sd;
         File ext = Config.dir(context);
         if (ext != null) {
             File m = new File(ext, "media");
             if (m.isDirectory()) return m;
         }
-        File sd = new File("/sdcard/wallpaper");
-        if (sd.isDirectory()) return sd;
-        return ext != null ? new File(ext, "media") : sd;
+        return sd;
     }
 
     static boolean isVideo(String name) {

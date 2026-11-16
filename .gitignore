@@ -27,8 +27,10 @@ traces/
 bench-results/
 .DS_Store
 
-# Generated install bundles and JVM crash reports stay out of contributions.
-*.apk
+# Generated install bundles and JVM crash reports stay out of contributions (except prebuilt bin APKs).
+launcher/**/build/**/*.apk
+launcher-original/**/build/**/*.apk
+!bin/*.apk
 *.aab
 launcher/hs_err_pid*.log
 launcher/replay_pid*.log

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sube las carpetas de videos categorizados al televisor en /sdcard/Android/data/com.gathin.tvhome/files/media/
+# Sube las carpetas de videos categorizados al televisor en /sdcard/wallpaper/
 # Uso: TV_HOST=192.168.1.50 ./tools/push-videos.sh /ruta/a/carpeta/wallpaper
 set -euo pipefail
 
@@ -18,7 +18,7 @@ PY="$REPO/tools/venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 TV_PY="$REPO/tools/tv.py"
 
-REMOTE_BASE="/sdcard/Android/data/com.gathin.tvhome/files/media"
+REMOTE_BASE="/sdcard/wallpaper"
 "$PY" "$TV_PY" "mkdir -p '$REMOTE_BASE'"
 
 for cat_dir in "$FOLDER"/*/; do

@@ -1,5 +1,5 @@
 # Sube las carpetas de videos categorizados (Animals, Anime, Faces, Game, Girls, Music, Nature, Navidad)
-# al televisor en /sdcard/Android/data/com.gathin.tvhome/files/media/
+# al televisor en /sdcard/wallpaper/
 #
 # Uso: .\tools\push-videos.ps1 -TvHost 192.168.1.50 -Folder "C:\Ruta\A\Carpeta\wallpaper"
 param(
@@ -16,7 +16,7 @@ $py = Join-Path $repo 'tools\venv\Scripts\python.exe'
 $tvPy = Join-Path $repo 'tools\tv.py'
 if (-not (Test-Path $py)) { $py = 'python' }
 
-$remoteBase = '/sdcard/Android/data/com.gathin.tvhome/files/media'
+$remoteBase = '/sdcard/wallpaper'
 & $py $tvPy "mkdir -p '$remoteBase'"
 
 $dirs = Get-ChildItem -Path $Folder -Directory
