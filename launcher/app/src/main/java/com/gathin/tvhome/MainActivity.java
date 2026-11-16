@@ -29,6 +29,8 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.bluetooth.BluetoothDevice;
+import android.media.AudioManager;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
@@ -198,11 +200,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View btnSleep;
     private String lastMediaSignature = "";
     private String lastMediaIconPkg = "";
+    private View btnAudioRoute;
+    private final BroadcastReceiver btAudioReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(intent.getAction())
+                    || "android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED".equals(intent.getAction())) {
+                getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE).edit()
+                        .remove("audio_route_target").apply();
+            }
+            updateAudioRouteButton();
+        }
+    };
     private final Runnable mediaTick = new Runnable() {
         @Override
         public void run() {
             if (!resumed) return;
             updateMediaWidget();
+            updateAudioRouteButton();
             handler.postDelayed(this, 2000);
         }
     };
@@ -897,6 +912,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (btnWallpaper != null) {
             btnWallpaper.setOnClickListener(v -> showWallpaperMenu(btnWallpaper));
         }
+        btnAudioRoute = findViewById(R.id.btnAudioRoute);
+        if (btnAudioRoute != null) {
+            btnAudioRoute.setOnClickListener(v -> showAudioRouteMenu(btnAudioRoute));
+        }
         addTopBarApps(cfg.topBarApps, cfg.launchActions);
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
@@ -1023,11 +1042,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnReorder.setOnKeyListener(pillKeys);
         btnLibraryTop.setOnKeyListener(pillKeys);
         if (btnWallpaper != null) btnWallpaper.setOnKeyListener(pillKeys);
+        if (btnAudioRoute != null) btnAudioRoute.setOnKeyListener(pillKeys);
         for (View button : topAppButtons) button.setOnKeyListener(pillKeys);
         if (advancedEffects) {
             List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnLibraryTop, btnSettings));
             if (btnSleep != null) pills.add(btnSleep);
             if (btnWallpaper != null) pills.add(btnWallpaper);
+            if (btnAudioRoute != null) pills.add(btnAudioRoute);
             pills.addAll(topAppButtons);
             for (View button : pills) {
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
@@ -1061,6 +1082,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             } else {
                 registerReceiver(wakeReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
             }
+        }
+        IntentFilter btFilter = new IntentFilter();
+        btFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        btFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        btFilter.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
+        btFilter.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(btAudioReceiver, btFilter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(btAudioReceiver, btFilter);
         }
 
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
@@ -1233,6 +1264,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.notifyDataSetChanged();
         wakeDockFromAutoHide();
         updateMediaWidget();
+        updateAudioRouteButton();
         restartMusicDockTimer();
         handler.removeCallbacks(mediaTick);
         handler.postDelayed(mediaTick, 2000);
@@ -1544,6 +1576,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         cancelHoldOk();
         if (gameDay != null) gameDay.shutdown();
         unregisterReceiver(packageReceiver);
+        try {
+            unregisterReceiver(btAudioReceiver);
+        } catch (Throwable ignored) {}
         if (openOnStartOnWake) unregisterReceiver(wakeReceiver);
         wallpaperPlayer.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
@@ -1590,6 +1625,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (RemoteKeys.handleColorMediaKeys(this, event)) {
+            handler.postDelayed(this::updateMediaWidget, 350);
+            return true;
+        }
         if (dockAutoHidden) {
             wakeDockFromAutoHide();
             restartMusicDockTimer();
@@ -3937,6 +3976,47 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rows.getChildAt(0).requestFocus();
     }
 
+    private void updateAudioRouteButton() {
+        if (btnAudioRoute == null) return;
+        boolean hasBt = AudioRouteController.hasConnectedBluetoothAudio(this);
+        btnAudioRoute.setVisibility(hasBt ? View.VISIBLE : View.GONE);
+    }
+
+    private void showAudioRouteMenu(View anchor) {
+        View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
+        LinearLayout rows = panel.findViewById(R.id.rows);
+        PopupWindow popup = glassPopup(panel, (int) (260 * density));
+        List<AudioRouteController.AudioEndpoint> endpoints = AudioRouteController.getAvailableEndpoints(this);
+        for (AudioRouteController.AudioEndpoint ep : endpoints) {
+            int icon = ep.isBluetooth ? R.drawable.ic_bluetooth : R.drawable.ic_audio_output;
+            View row = addInputRow(rows, popup, icon, ep.name, -1, () -> {
+                boolean ok = AudioRouteController.switchTo(this, ep);
+                if (ok) {
+                    Toast.makeText(this, "Audio: " + ep.name, Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Error al cambiar audio", Toast.LENGTH_SHORT).show();
+                }
+            });
+            if (ep.isCurrent) {
+                TextView status = row.findViewById(R.id.status);
+                View dot = row.findViewById(R.id.dot);
+                if (status != null) {
+                    status.setText("Activo");
+                    status.setVisibility(View.VISIBLE);
+                }
+                if (dot != null) {
+                    dot.setVisibility(View.VISIBLE);
+                }
+            }
+        }
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        popup.setWidth(Math.max((int) (260 * density), panel.getMeasuredWidth()));
+        dropIn(popup, panel, anchor, Gravity.END);
+        if (rows.getChildCount() > 0) {
+            rows.getChildAt(0).requestFocus();
+        }
+    }
+
     private void showWallpaperMenu(View anchor) {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
@@ -4278,7 +4358,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             wakeDockFromAutoHide();
         }
         if (mediaWidget != null) {
-            if (playing) {
+            String mediaPkg = MediaBridgeService.getActivePackage(this);
+            boolean hasMedia = (title != null && !title.isEmpty()) || (mediaPkg != null && !mediaPkg.isEmpty())
+                    || MediaBridgeService.findController(this) != null;
+            if (hasMedia) {
                 mediaWidget.setVisibility(View.VISIBLE);
             } else {
                 boolean hadFocus = mediaWidget.hasFocus();

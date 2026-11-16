@@ -496,6 +496,14 @@
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
+                    android:id="@+id/btnAudioRoute"
+                    style="@style/TopButtonIcon"
+                    android:visibility="gone"
+                    android:contentDescription="Salida de audio"
+                    android:drawableStart="@drawable/ic_audio_output"
+                    android:nextFocusDown="@+id/grid" />
+
+                <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopButton"
                     android:text="@string/settings"

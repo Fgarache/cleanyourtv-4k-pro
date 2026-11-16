@@ -484,4 +484,30 @@ final class RemoteKeys {
         } catch (ActivityNotFoundException | SecurityException ignored) {
         }
     }
+
+    public static boolean handleColorMediaKeys(Context context, KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_PROG_RED) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.next(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_GREEN) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.playPause(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_YELLOW) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.stop(context);
+            }
+            return true;
+        } else if (code == KeyEvent.KEYCODE_PROG_BLUE) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                MediaBridgeService.previous(context);
+            }
+            return true;
+        }
+        return false;
+    }
 }
