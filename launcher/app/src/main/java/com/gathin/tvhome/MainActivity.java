@@ -836,9 +836,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         float w = card.getWidth() * scale + 2 * pad;
                         float h = card.getHeight() * scale + 2 * pad;
                         float x = r.exactCenterX() - w / 2f;
-                        float y = r.exactCenterY() - h / 2f;
-                        springX.animateToFinalPosition(x);
-                        springY.animateToFinalPosition(y);
+                        float targetGridTransY = (dockExpandAnimator != null && dockExpandAnimator.isRunning())
+                                ? dockShiftTargetY
+                                : grid.getTranslationY();
+                        float y = r.exactCenterY() + targetGridTransY - h / 2f;
+                        glass.setTranslationX(x);
+                        glass.setTranslationY(y);
                     }
                 }
             }
@@ -2067,12 +2070,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float x = r.exactCenterX() - w / 2f;
         // advanced_effects lifts a focused grid tile by 4dp and the glass follows it; dock tiles stay put (#2135).
         boolean lifted = advancedEffects && !DockSlots.inDockRow(dockRow, singleRow, position, COLUMNS);
-        float targetGridTransY = isTwoRowsExpanded ? -rowShiftHeight : 0f;
-        float gridAnimDeltaY = targetGridTransY - grid.getTranslationY();
-        float cardFinalCenterY = r.exactCenterY() + gridAnimDeltaY;
-        float y = cardFinalCenterY - h / 2f - (lifted ? 4f * density : 0f);
-        glassScrollShift = 0f;
-        glassScrollShiftX = 0f;
+        float targetGridTransY = (dockExpandAnimator != null && dockExpandAnimator.isRunning())
+                ? dockShiftTargetY
+                : grid.getTranslationY();
+        float y = r.exactCenterY() + targetGridTransY - h / 2f - (lifted ? 4f * density : 0f);
 
         ViewGroup.LayoutParams lp = glass.getLayoutParams();
         if (lp.width != (int) w || lp.height != (int) h || card.getWidth() != glassCardW) {
@@ -2094,13 +2095,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             glassAccent = accent;
             glass.setAccent(accent);
         }
+
+        glass.animate().cancel();
+        glass.setAlpha(1f);
+        glass.setVisibility(View.VISIBLE);
+        glass.setTranslationZ(32f * density);
+
         if (!glassShown) {
             springX.cancel();
             springY.cancel();
             glass.setTranslationX(x);
             glass.setTranslationY(y);
-            if (animations && !reducedMotion) glass.animate().alpha(1f).setDuration(180).start();
-            else glass.setAlpha(1f);
             glassShown = true;
         } else if (!animations) {
             springX.cancel();
@@ -2131,19 +2136,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
         View card = vh == null ? null : vh.itemView.findViewById(R.id.card);
         if (card == null || card.getWidth() <= 0 || !card.isFocused()) return;
-        float pad = 6f * density;
-        float scale = adapter.focusScale();
-        int w = (int) (card.getWidth() * scale + 2 * pad);
-        int h = (int) (card.getHeight() * scale + 2 * pad);
-        // The tile's rect, not only its width: the grid's top padding lands after the tile has its width, so a
-        // cold start can leave the glass at the right size and the wrong place. Comparing the rect catches that.
-        Rect r = tileRect;
-        r.set(0, 0, card.getWidth(), card.getHeight());
-        root.offsetDescendantRectToMyCoords(card, r);
-        if (!glassShown || card.getWidth() != glassCardW || glass.getWidth() != w || glass.getHeight() != h
-                || !glassCardRect.equals(r)) {
-            onTileFocused(pos, card);
-        }
+        onTileFocused(pos, card);
     }
 
     // ---- top shelf -------------------------------------------------------------------------------
@@ -2670,10 +2663,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     // ---- navigation ------------------------------------------------------------------------------
 
+    private float dockShiftTargetY = 0f;
+
     private void animateDockRowShift(float targetY) {
         if (dockExpandAnimator != null) {
             dockExpandAnimator.cancel();
         }
+        dockShiftTargetY = targetY;
         float startY = grid.getTranslationY();
         if (startY == targetY) {
             grid.invalidateItemDecorations();
@@ -2693,6 +2689,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         dockExpandAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(android.animation.Animator animation) {
+                dockExpandAnimator = null;
                 grid.invalidateItemDecorations();
                 refitGlass();
             }
@@ -3076,6 +3073,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 }
                 grid.invalidateItemDecorations();
             }
+        });
+        grid.requestLayout();
+        grid.post(() -> {
+            RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
+            if (h != null) {
+                View c = h.itemView.findViewById(R.id.card);
+                if (c.isFocused()) onTileFocused(pos, c);
+                else c.requestFocus();
+            }
+            grid.invalidateItemDecorations();
         });
     }
 
